@@ -1,0 +1,77 @@
+/*=============================================================================
+// RUIJIE IS PROVIDING THIS DESIGN, CODE, OR INFORMATION "AS IS"
+// SOLELY FOR USE IN DEVELOPING PROGRAMS AND SOLUTIONS FOR
+// RUIJIE DEVICES.  BY PROVIDING THIS DESIGN, CODE, OR INFORMATION
+// AS ONE POSSIBLE IMPLEMENTATION OF THIS FEATURE, APPLICATION
+// OR STANDARD, RUIJIE IS MAKING NO REPRESENTATION THAT THIS
+// IMPLEMENTATION IS FREE FROM ANY CLAIMS OF INFRINGEMENT,
+// AND YOU ARE RESPONSIBLE FOR OBTAINING ANY RIGHTS YOU MAY REQUIRE
+// FOR YOUR IMPLEMENTATION.  RUIJIE EXPRESSLY DISCLAIMS ANY
+// WARRANTY WHATSOEVER WITH RESPECT TO THE ADEQUACY OF THE
+// IMPLEMENTATION, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OR
+// REPRESENTATIONS THAT THIS IMPLEMENTATION IS FREE FROM CLAIMS OF
+// INFRINGEMENT, IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+// FOR A PARTICULAR PURPOSE.
+// (c) Copyright 2007 RUIJIE, Inc.
+// All rights reserved.
+
+//============================================================================
+//     FileName: reg_access_sequence_lib.sv
+//         Desc:  
+//       Author: lixu
+//        Email: lixu@ruijie.com.cn
+//     HomePage: http://www.ruijie.com.cn
+//      Version: 0.0.1
+//   LastChange: 2013-11-22 15:38:25
+//      History:
+//============================================================================*/
+
+`ifndef REG_ACCESS_SEQUENCE_LIB__SV
+`define REG_ACCESS_SEQUENCE_LIB__SV 
+//=========================================================================================
+//class:m_seq_mode_cfg
+//=========================================================================================
+class m_seq_mode_cfg extends uvm_sequence #(reg_access_item#(`ADDR_WIDTH,`BURSTLEN));
+	/*{{{*/
+	reg_access_frame_seq reg_access_frame_seq0;
+	int vxlan_end_id[string];
+	int vxlan_cap_id[string];
+
+	`uvm_object_utils(m_seq_mode_cfg)
+	function new(string name = "m_seq_mode_cfg");
+		super.new(name);
+		 reg_access_frame_seq0 = reg_access_frame_seq::type_id::create("reg_access_frame_seq0");
+	endfunction : new
+
+    virtual task body();
+    endtask
+
+    function void setVxlanTunnelEndTable(input [31:0] addr,input s_vxlan_tunnel_end m_vxlan_tunnel_end,input uvm_sequencer_base seqr);
+		string sip_dip_idx;
+		s_vxlan_tunnel_end_aa m_vxlan_tunnel_end_aa;
+		sip_dip_idx = `SKEY({m_vxlan_tunnel_end.sip,m_vxlan_tunnel_end.dip,m_vxlan_tunnel_end.svp});
+		m_vxlan_tunnel_end_aa[sip_dip_idx] = m_vxlan_tunnel_end;
+		tbtop_pkg::vxlan_tunnel_end_table[addr] = m_vxlan_tunnel_end_aa;
+		if(tbtop_pkg::vxlan_tunnel_end_table.size() > 128) begin 
+			`uvm_error("setVxlanTunnelEndTable",$sformatf("You set table size more than 128!->\n%p",vxlan_tunnel_end_table))
+		end
+		reg_access_frame_seq0.s_m_write(addr,32'h0,seqr);
+	endfunction
+
+    function void setVxlanTunnelCapTable(input [31:0] addr,input s_vxlan_tunnel_cap m_vxlan_tunnel_cap,input uvm_sequencer_base seqr);
+		string idx;
+		s_vxlan_tunnel_cap_aa m_vxlan_tunnel_cap_aa;
+		sip_dip_idx = `SKEY(m_vxlan_tunnel_cap.index);
+		m_vxlan_tunnel_cap_aa[idx] = m_vxlan_tunnel_cap;
+		tbtop_pkg::vxlan_tunnel_cap_table[addr] = m_vxlan_tunnel_cap_aa;
+		if(tbtop_pkg::vxlan_tunnel_cap_table.size() > 128) begin 
+			`uvm_error("setVxlanTunnelCapTable",$sformatf("You set table size more than 128!->\n%p",vxlan_tunnel_cap_table))
+		end
+		reg_access_frame_seq0.s_m_write(addr,32'h0,seqr);
+	endfunction
+
+
+	/*}}}*/
+endclass : m_seq_mode_cfg
+
+`endif

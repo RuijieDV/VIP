@@ -1,0 +1,425 @@
+/*=============================================================================
+// RUIJIE IS PROVIDING THIS DESIGN, CODE, OR INFORMATION "AS IS"
+// SOLELY FOR USE IN DEVELOPING PROGRAMS AND SOLUTIONS FOR
+// RUIJIE DEVICES.  BY PROVIDING THIS DESIGN, CODE, OR INFORMATION
+// AS ONE POSSIBLE IMPLEMENTATION OF THIS FEATURE, APPLICATION
+// OR STANDARD, RUIJIE IS MAKING NO REPRESENTATION THAT THIS
+// IMPLEMENTATION IS FREE FROM ANY CLAIMS OF INFRINGEMENT,
+// AND YOU ARE RESPONSIBLE FOR OBTAINING ANY RIGHTS YOU MAY REQUIRE
+// FOR YOUR IMPLEMENTATION.  RUIJIE EXPRESSLY DISCLAIMS ANY
+// WARRANTY WHATSOEVER WITH RESPECT TO THE ADEQUACY OF THE
+// IMPLEMENTATION, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OR
+// REPRESENTATIONS THAT THIS IMPLEMENTATION IS FREE FROM CLAIMS OF
+// INFRINGEMENT, IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS
+// FOR A PARTICULAR PURPOSE.
+// (c) Copyright 2007 RUIJIE, Inc.
+// All rights reserved.
+
+//============================================================================
+//     FileName: reg_access_sequence_lib.sv
+//         Desc:  
+//       Author: lixu
+//        Email: lixu@ruijie.com.cn
+//     HomePage: http://www.ruijie.com.cn
+//      Version: 0.0.1
+//   LastChange: 2013-11-22 15:38:25
+//      History:
+//============================================================================*/
+
+`ifndef REG_ACCESS_SEQUENCE_LIB__SV
+`define REG_ACCESS_SEQUENCE_LIB__SV 
+//=========================================================================================
+//class:regs_mode_cfg
+//=========================================================================================
+class regs_mode_cfg extends uvm_sequence #(reg_access_item#(`ADDR_WIDTH,`BURSTLEN));
+	/*{{{*/
+
+	`uvm_object_utils(regs_mode_cfg)
+	function new(string name = "regs_mode_cfg");
+		super.new(name);
+	endfunction : new
+
+    virtual task body();
+    endtask
+
+    task regWR(input bit [`ADDR_WIDTH-1:0] addr,input bit [`ADDR_WIDTH-1:0] data,input uvm_sequencer_base seqr);
+		reg_access_frame_seq reg_access_frame_seq0;
+		reg_access_frame_seq0 = reg_access_frame_seq::type_id::create("reg_access_frame_seq0");
+		reg_access_frame_seq0.s_m_write(addr,data,seqr);
+		`uvm_info("regWR",$sformatf("@ADDR[0x%h]:DATA[%h]",addr,data),UVM_LOW)
+	endtask
+
+    task regRD(input bit [`ADDR_WIDTH-1:0] addr,output bit [`ADDR_WIDTH-1:0] data,input uvm_sequencer_base seqr);
+        bit [7:0] rdata[];
+		reg_access_frame_seq reg_access_frame_seq0;
+		reg_access_frame_seq0 = reg_access_frame_seq::type_id::create("reg_access_frame_seq0");
+		reg_access_frame_seq0.s_m_read_with_data(addr,rdata,seqr);
+		for(int i=0;i<`ADDR_WIDTH/8;i++)
+			data[`ADDR_WIDTH-1-8*i -:8] = rdata[i];
+		`uvm_info("regRD",$sformatf("@ADDR[0x%h]:DATA[%h]",addr,data),UVM_LOW)
+	endtask
+
+    task MPI_WR(input bit [`ADDR_WIDTH-1:0] data,input uvm_sequencer_base seqr);
+        bit [`ADDR_WIDTH-1:0] rdata;
+        do begin
+            #2us;
+            regRD('h0308,rdata,seqr);
+        end while(rdata[1:0] !== 2'b0);
+        regWR('h0300,data,seqr);//spi_wreg
+        regWR('h0308,32'b1,seqr);//spi_ctl
+    endtask
+
+    task MPI_RD(output bit [`ADDR_WIDTH-1:0] data,input uvm_sequencer_base seqr);
+        bit [`ADDR_WIDTH-1:0] rdata;
+        do begin
+            #2us;
+            regRD('h0308,rdata,seqr);
+        end while(rdata[1:0] !== 2'b0);
+        regWR('h0308,32'b10,seqr);//spi_ctl
+        do begin
+            #2us;
+            regRD('h0308,rdata,seqr);
+        end while(rdata[1:0] !== 2'b0);
+        regRD('h0304,data,seqr);
+    endtask
+
+    task MPI_WR_NO_BUSY(input bit [`ADDR_WIDTH-1:0] data,input uvm_sequencer_base seqr);
+        bit [`ADDR_WIDTH-1:0] rdata;
+        regWR('h0300,data,seqr);//spi_wreg
+        regWR('h0308,32'b1,seqr);//spi_ctl
+    endtask
+
+    task MPI_RD_BO_BUSY(output bit [`ADDR_WIDTH-1:0] data,input uvm_sequencer_base seqr);
+        bit [`ADDR_WIDTH-1:0] rdata;
+        regWR('h0308,32'b10,seqr);//spi_ctl
+        regRD('h0304,data,seqr);
+    endtask
+
+
+    task HPI_WR_ADDR2DATA(input bit [`ADDR_WIDTH-1:0] addr,input bit [`ADDR_WIDTH-1:0] wdata,input uvm_sequencer_base seqr);
+	    HPI_WR(addr,32'({2'b11,2'b10,1'b0,1'b1}),seqr);
+	    HPI_WR(wdata,32'({2'b11,2'b11,1'b0,1'b1}),seqr);
+    endtask
+
+    task HPI_WR_ADDR_INCR2DATA(input bit [`ADDR_WIDTH-1:0] addr,input bit [`ADDR_WIDTH-1:0] wdata,input uvm_sequencer_base seqr);
+	    HPI_WR(addr,32'({2'b11,2'b10,1'b0,1'b1}),seqr);
+	    HPI_WR(wdata,32'({2'b11,2'b01,1'b0,1'b1}),seqr);
+    endtask
+
+    task HPI_RD_ADDR2DATA(input bit [`ADDR_WIDTH-1:0] addr,output bit [`ADDR_WIDTH-1:0] rdata,input uvm_sequencer_base seqr);
+	    HPI_WR(addr,32'({2'b11,2'b10,1'b0,1'b1}),seqr);
+	    HPI_RD(32'({2'b11,2'b11,1'b1,1'b0}),rdata,seqr);
+    endtask
+
+
+    task HPI_WR(input bit [`ADDR_WIDTH-1:0] wdata,input bit [`ADDR_WIDTH-1:0] cdata,input uvm_sequencer_base seqr);
+        bit [`ADDR_WIDTH-1:0] rdata;
+        do begin
+            #50ns;
+            regRD('h0208,rdata,seqr);
+        end while(rdata[1:0] !== 2'b0);
+        regWR('h0200,wdata,seqr);//hpi_wreg
+        regWR('h0208,cdata,seqr);//hpi_ctl
+    endtask
+
+    task HPI_RD(input bit [`ADDR_WIDTH-1:0] cdata,output bit [`ADDR_WIDTH-1:0] data,input uvm_sequencer_base seqr);
+        bit [`ADDR_WIDTH-1:0] rdata;
+        do begin
+            #50ns;
+            regRD('h0208,rdata,seqr);
+        end while(rdata[1:0] !== 2'b0);
+        regWR('h0208,cdata,seqr);//hpi_ctl
+        do begin
+            #50ns;
+            regRD('h0208,rdata,seqr);
+        end while(rdata[1:0] !== 2'b0);
+        regRD('h0204,data,seqr);
+    endtask
+
+    task polling_read(input uvm_sequencer_base seqr);
+        bit [`ADDR_WIDTH-1:0] rdata;/*{{{*/
+        int pkt_num;
+        bit [15:0] dq[int][$];
+        bit all_good;
+        regWR('h0210,32'h1,seqr);
+        while(all_good == 0) begin
+            do begin
+                #10ns;
+                HPI_WR('h166D,32'({2'b01,2'b10,1'b0,1'b1}),seqr);
+                HPI_RD(32'({2'b00,2'b11,1'b1,1'b0}),rdata,seqr);
+                HPI_RD(32'({2'b00,2'b11,1'b1,1'b0}),rdata,seqr);
+                if(rdata == 0) begin
+                    `uvm_info("polling_read",$sformatf("Number of pkt is : %0d ---> Retry 10ns to read...",rdata),UVM_LOW)
+                    HPI_RD(32'({2'b10,2'b11,1'b1,1'b0}),rdata,seqr);
+                end
+            end while(rdata == 0);
+            `uvm_info("polling_read",$sformatf("Number of pkt is : %0d",rdata),UVM_LOW)
+            pkt_num = rdata;
+            #10ns;
+            HPI_WR('h166E,32'({2'b00,2'b10,1'b0,1'b1}),seqr);
+            HPI_RD(32'({2'b00,2'b11,1'b1,1'b0}),rdata,seqr);
+            HPI_RD(32'({2'b00,2'b11,1'b1,1'b0}),rdata,seqr);
+            if(rdata == 1) begin
+                `uvm_info("polling_read",$sformatf("Status of pakcet:%0d(empty) ---> Retry from top to read...",rdata),UVM_LOW)
+                HPI_RD(32'({2'b10,2'b11,1'b1,1'b0}),rdata,seqr);
+            end
+            else 
+                all_good = 1;
+        end
+        `uvm_info("polling_read",$sformatf("Status of pakcet:%0d(full)",rdata),UVM_LOW)
+        //------------------------------------------
+        HPI_WR('h1670,32'({2'b00,2'b10,1'b0,1'b1}),seqr);
+        HPI_RD(32'({2'b00,2'b11,1'b1,1'b0}),rdata,seqr);
+        for(int i=0;i<pkt_num;i++) begin
+            int pkt_bytes;
+            HPI_RD(32'({2'b00,2'b01,1'b1,1'b0}),rdata,seqr);
+            dq[i].push_back(rdata);
+            if(rdata !== 16'haa)
+                `uvm_error("polling_read",$sformatf("Pkt first 16bit !== 00AA"))
+            HPI_RD(32'({2'b00,2'b01,1'b1,1'b0}),rdata,seqr);
+            if(rdata[7:0] !== 8'b0010)
+                `uvm_error("polling_read",$sformatf("Pkt second 8bit !== 8'b0010"))
+            `uvm_info("polling_read",$sformatf("pkt-seq[%0d] bytes is %0d.",i,rdata[15:8]),UVM_LOW)
+            dq[i].push_back(rdata);
+            pkt_bytes = rdata[15:8] - 4;
+            if(pkt_bytes%2 == 0)
+                pkt_bytes = pkt_bytes/2;
+            else
+                pkt_bytes = pkt_bytes/2+1;
+            for(int k=0;k<pkt_bytes;k++) begin
+                HPI_RD(32'({2'b00,2'b01,1'b1,1'b0}),rdata,seqr);
+                dq[i].push_back(rdata);
+            end
+        end
+        HPI_WR('h0909,32'({2'b00,2'b00,1'b0,1'b1}),seqr);
+        HPI_WR('h166E,32'({2'b00,2'b10,1'b0,1'b1}),seqr);
+        HPI_WR('h0001,32'({2'b00,2'b11,1'b0,1'b1}),seqr);
+        HPI_WR('h0505,32'({2'b10,2'b00,1'b0,1'b1}),seqr);
+        fxs_pkg::cpu_read_dq.push_back(dq);
+        `uvm_info("polling_read",$sformatf("Reading all pkt is:\n"),UVM_LOW)
+        for(int i=0;i<pkt_num;i++) begin
+            $display("pkt:%0d---->\n%p",i,dq[i]);
+        end 
+        regWR('h0210,32'h0,seqr);
+        /*}}}*/
+    endtask
+
+
+    task polling_write(input bit [15:0] dq[int][$],input uvm_sequencer_base seqr);
+        bit [`ADDR_WIDTH-1:0] rdata;/*{{{*/
+        int idx;
+        regWR('h0210,32'h1,seqr);
+        do begin
+            #10ns;
+            HPI_WR('h166F,32'({2'b01,2'b10,1'b0,1'b1}),seqr);
+            HPI_RD(32'({2'b00,2'b11,1'b1,1'b0}),rdata,seqr);
+            HPI_RD(32'({2'b00,2'b11,1'b1,1'b0}),rdata,seqr);
+            if(rdata == 0) begin
+                bit [`ADDR_WIDTH-1:0] mdata;
+                `uvm_info("polling_write",$sformatf("Status register == 0 ---> Retry 10ns to read..."),UVM_LOW)
+                HPI_RD(32'({2'b10,2'b11,1'b1,1'b0}),mdata,seqr);
+            end
+        end while(rdata == 0);
+        `uvm_info("polling_write",$sformatf("Status register == 1 continue write sequence..."),UVM_LOW)
+        HPI_WR('h1737,32'({2'b00,2'b10,1'b0,1'b1}),seqr);//set HPIA
+        //---------------------------------
+        //Write pkt buffer
+        //---------------------------------
+        if(dq.first(idx)) begin
+            do begin
+                int mlen = dq[idx].size();
+                for(int i=0;i<mlen;i++) begin
+                    HPI_WR(dq[idx][i],32'({2'b00,2'b01,1'b0,1'b1}),seqr);//set HPIA
+                end
+            end while(dq.next(idx));
+        end
+        //---------------------------------
+        fxs_pkg::cpu_write_dq.push_back(dq);
+        HPI_WR('h166F,32'({2'b00,2'b10,1'b0,1'b1}),seqr);
+        HPI_WR('h0000,32'({2'b00,2'b11,1'b0,1'b1}),seqr);
+        HPI_WR('h0505,32'({2'b10,2'b00,1'b0,1'b1}),seqr); 
+        regWR('h0210,32'h0,seqr);
+        /*}}}*/
+    endtask
+
+
+    task polling_read_nonum(input uvm_sequencer_base seqr);
+        bit [`ADDR_WIDTH-1:0] rdata;/*{{{*/
+        int pkt_num;
+        bit [15:0] dq[int][$];
+        bit all_good;
+        pkt_num = 1;
+        regWR('h0210,32'h1,seqr);
+        while(all_good == 0) begin
+            //do begin
+            //    #10ns;
+            //    HPI_WR('h166D,32'({2'b01,2'b10,1'b0,1'b1}),seqr);
+            //    HPI_RD(32'({2'b00,2'b11,1'b1,1'b0}),rdata,seqr);
+            //    HPI_RD(32'({2'b00,2'b11,1'b1,1'b0}),rdata,seqr);
+            //    if(rdata == 0) begin
+            //        `uvm_info("polling_read",$sformatf("Number of pkt is : %0d ---> Retry 10ns to read...",rdata),UVM_LOW)
+            //        HPI_RD(32'({2'b10,2'b11,1'b1,1'b0}),rdata,seqr);
+            //    end
+            //end while(rdata == 0);
+            //`uvm_info("polling_read",$sformatf("Number of pkt is : %0d",rdata),UVM_LOW)
+            #10ns;
+            HPI_WR('h166E,32'({2'b01,2'b10,1'b0,1'b1}),seqr);
+            HPI_RD(32'({2'b00,2'b11,1'b1,1'b0}),rdata,seqr);
+            HPI_RD(32'({2'b00,2'b11,1'b1,1'b0}),rdata,seqr);
+            if(rdata == 1) begin
+                `uvm_info("polling_read",$sformatf("Status of pakcet:%0d(empty) ---> Retry from top to read...",rdata),UVM_LOW)
+                HPI_WR('h0505,32'({2'b10,2'b00,1'b0,1'b1}),seqr);
+            end
+            else 
+                all_good = 1;
+        end
+        `uvm_info("polling_read",$sformatf("Status of pakcet:%0d(full)",rdata),UVM_LOW)
+        //------------------------------------------
+        HPI_WR('h1670,32'({2'b00,2'b10,1'b0,1'b1}),seqr);
+        HPI_RD(32'({2'b00,2'b11,1'b1,1'b0}),rdata,seqr);
+        for(int i=0;i<pkt_num;i++) begin
+            int pkt_bytes;
+            HPI_RD(32'({2'b00,2'b01,1'b1,1'b0}),rdata,seqr);
+            dq[i].push_back(rdata);
+            if(rdata !== 16'haa)
+                `uvm_error("polling_read",$sformatf("Pkt first 16bit !== 00AA"))
+            HPI_RD(32'({2'b00,2'b01,1'b1,1'b0}),rdata,seqr);
+            if(rdata[7:0] !== 8'b0010)
+                `uvm_error("polling_read",$sformatf("Pkt second 8bit !== 8'b0010"))
+            `uvm_info("polling_read",$sformatf("pkt-seq[%0d] bytes is %0d.",i,rdata[15:8]),UVM_LOW)
+            dq[i].push_back(rdata);
+            pkt_bytes = rdata[15:8] - 4;
+            if(pkt_bytes%2 == 0)
+                pkt_bytes = pkt_bytes/2;
+            else
+                pkt_bytes = pkt_bytes/2+1;
+            for(int k=0;k<pkt_bytes;k++) begin
+                HPI_RD(32'({2'b00,2'b01,1'b1,1'b0}),rdata,seqr);
+                dq[i].push_back(rdata);
+            end
+        end
+        HPI_WR('h0909,32'({2'b00,2'b00,1'b0,1'b1}),seqr);
+        HPI_WR('h166E,32'({2'b00,2'b10,1'b0,1'b1}),seqr);
+        HPI_WR('h0001,32'({2'b10,2'b11,1'b0,1'b1}),seqr);
+        //HPI_WR('h0505,32'({2'b10,2'b00,1'b0,1'b1}),seqr);
+        fxs_pkg::cpu_read_dq.push_back(dq);
+        `uvm_info("polling_read",$sformatf("Reading all pkt is:\n"),UVM_LOW)
+        for(int i=0;i<pkt_num;i++) begin
+            $display("pkt:%0d---->\n%p",i,dq[i]);
+        end 
+        regWR('h0210,32'h0,seqr);
+        /*}}}*/
+    endtask
+
+     task polling_kernel_write(input bit [15:0] dq[int][$],input uvm_sequencer_base seqr);
+        bit [`ADDR_WIDTH-1:0] rdata;/*{{{*/
+        int idx;
+        regWR('h0214,32'h1,seqr);
+        do begin
+            #10ns;
+            HPI_WR('h166F,32'({1'b1,2'b01,2'b10,1'b0,1'b1}),seqr);
+            HPI_RD(32'({1'b1,2'b00,2'b11,1'b1,1'b0}),rdata,seqr);
+            HPI_RD(32'({1'b1,2'b00,2'b11,1'b1,1'b0}),rdata,seqr);
+            if(rdata == 0) begin
+                bit [`ADDR_WIDTH-1:0] mdata;
+                `uvm_info("polling_write",$sformatf("Status register == 0 ---> Retry 10ns to read..."),UVM_LOW)
+                HPI_RD(32'({1'b1,2'b10,2'b11,1'b1,1'b0}),mdata,seqr);
+            end
+        end while(rdata == 0);
+        `uvm_info("polling_write",$sformatf("Status register == 1 continue write sequence..."),UVM_LOW)
+        HPI_WR('h1737,32'({1'b1,2'b00,2'b10,1'b0,1'b1}),seqr);//set HPIA
+        //---------------------------------
+        //Write pkt buffer
+        //---------------------------------
+        if(dq.first(idx)) begin
+            do begin
+                int mlen = dq[idx].size();
+                for(int i=0;i<mlen;i++) begin
+                    HPI_WR(dq[idx][i],32'({2'b00,2'b01,1'b0,1'b1}),seqr);//set HPIA
+                end
+            end while(dq.next(idx));
+        end
+        //---------------------------------
+        fxs_pkg::cpu_write_dq.push_back(dq);
+        HPI_WR('h166F,32'({1'b1,2'b00,2'b10,1'b0,1'b1}),seqr);
+        HPI_WR('h0000,32'({1'b1,2'b00,2'b11,1'b0,1'b1}),seqr);
+        HPI_WR('h0505,32'({1'b1,2'b10,2'b00,1'b0,1'b1}),seqr); 
+        regWR('h0214,32'h0,seqr);
+        /*}}}*/
+    endtask
+
+
+    task polling_kernel_read_nonum(input uvm_sequencer_base seqr);
+        bit [`ADDR_WIDTH-1:0] rdata;/*{{{*/
+        int pkt_num;
+        bit [15:0] dq[int][$];
+        bit all_good;
+        pkt_num = 1;
+        regWR('h0214,32'h1,seqr);
+        regWR('h0210,32'h1,seqr);
+        while(all_good == 0) begin
+            //do begin
+            //    #10ns;
+            //    HPI_WR('h166D,32'({2'b01,2'b10,1'b0,1'b1}),seqr);
+            //    HPI_RD(32'({2'b00,2'b11,1'b1,1'b0}),rdata,seqr);
+            //    HPI_RD(32'({2'b00,2'b11,1'b1,1'b0}),rdata,seqr);
+            //    if(rdata == 0) begin
+            //        `uvm_info("polling_read",$sformatf("Number of pkt is : %0d ---> Retry 10ns to read...",rdata),UVM_LOW)
+            //        HPI_RD(32'({2'b10,2'b11,1'b1,1'b0}),rdata,seqr);
+            //    end
+            //end while(rdata == 0);
+            //`uvm_info("polling_read",$sformatf("Number of pkt is : %0d",rdata),UVM_LOW)
+            #10ns;
+            HPI_WR('h166E,32'({1'b1,2'b01,2'b10,1'b0,1'b1}),seqr);
+            HPI_RD(32'({1'b1,2'b00,2'b11,1'b1,1'b0}),rdata,seqr);
+            HPI_RD(32'({1'b1,2'b00,2'b11,1'b1,1'b0}),rdata,seqr);
+            if(rdata == 1) begin
+                `uvm_info("polling_read",$sformatf("Status of pakcet:%0d(empty) ---> Retry from top to read...",rdata),UVM_LOW)
+                HPI_WR('h0505,32'({1'b1,2'b10,2'b00,1'b0,1'b1}),seqr);
+            end
+            else 
+                all_good = 1;
+        end
+        `uvm_info("polling_read",$sformatf("Status of pakcet:%0d(full)",rdata),UVM_LOW)
+        //------------------------------------------
+        HPI_WR('h1670,32'({1'b1,2'b00,2'b10,1'b0,1'b1}),seqr);
+        HPI_RD(32'({1'b1,2'b00,2'b11,1'b1,1'b0}),rdata,seqr);
+        for(int i=0;i<pkt_num;i++) begin
+            int pkt_bytes;
+            HPI_RD(32'({1'b1,2'b00,2'b01,1'b1,1'b0}),rdata,seqr);
+            dq[i].push_back(rdata);
+            if(rdata !== 16'haa)
+                `uvm_error("polling_read",$sformatf("Pkt first 16bit !== 00AA"))
+            HPI_RD(32'({1'b1,2'b00,2'b01,1'b1,1'b0}),rdata,seqr);
+            if(rdata[7:0] !== 8'b0010)
+                `uvm_error("polling_read",$sformatf("Pkt second 8bit !== 8'b0010"))
+            `uvm_info("polling_read",$sformatf("pkt-seq[%0d] bytes is %0d.",i,rdata[15:8]),UVM_LOW)
+            dq[i].push_back(rdata);
+            pkt_bytes = rdata[15:8] - 4;
+            if(pkt_bytes%2 == 0)
+                pkt_bytes = pkt_bytes/2;
+            else
+                pkt_bytes = pkt_bytes/2+1;
+            for(int k=0;k<pkt_bytes;k++) begin
+                HPI_RD(32'({1'b1,2'b00,2'b01,1'b1,1'b0}),rdata,seqr);
+                dq[i].push_back(rdata);
+            end
+        end
+        HPI_WR('h0909,32'({1'b1,2'b00,2'b00,1'b0,1'b1}),seqr);
+        HPI_WR('h166E,32'({1'b1,2'b00,2'b10,1'b0,1'b1}),seqr);
+        HPI_WR('h0001,32'({1'b1,2'b10,2'b11,1'b0,1'b1}),seqr);
+        //HPI_WR('h0505,32'({2'b10,2'b00,1'b0,1'b1}),seqr);
+        fxs_pkg::cpu_read_dq.push_back(dq);
+        `uvm_info("polling_read",$sformatf("Reading all pkt is:\n"),UVM_LOW)
+        for(int i=0;i<pkt_num;i++) begin
+            $display("pkt:%0d---->\n%p",i,dq[i]);
+        end 
+        regWR('h0210,32'h0,seqr);
+        regWR('h0214,32'h0,seqr);
+        /*}}}*/
+    endtask
+
+	/*}}}*/
+endclass : regs_mode_cfg
+
+`endif
